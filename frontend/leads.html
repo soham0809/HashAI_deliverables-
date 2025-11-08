@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Leads</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="max-w-3xl mx-auto p-6 space-y-6">
+    <h1>Leads</h1>
+    <div class="flex justify-end mb-4">
+      <button id="logout" class="px-3 py-2 bg-gray-200 rounded">Logout</button>
+    </div>
+    <table id="t" class="w-full table-auto border border-gray-200 text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-3 py-2 text-left">Name</th>
+          <th class="px-3 py-2 text-left">Email</th>
+          <th class="px-3 py-2 text-left">Phone</th>
+          <th class="px-3 py-2 text-left">Status</th>
+          <th class="px-3 py-2 text-left">Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="flex items-center gap-3 my-3">
+      <button id="prev" class="px-3 py-1 bg-gray-100 rounded">Prev</button>
+      <span id="page" class="text-gray-600"></span>
+      <button id="next" class="px-3 py-1 bg-gray-100 rounded">Next</button>
+    </div>
+    <h2 class="text-lg font-semibold mt-6">Add New Lead</h2>
+    <form id="add" class="space-y-2 max-w-md">
+      <div>
+        <label class="block text-sm text-gray-700">Name</label>
+        <input id="name" placeholder="Name" required class="w-full border rounded px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-700">Email</label>
+        <input id="lemail" type="email" placeholder="Email" required class="w-full border rounded px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-700">Phone</label>
+        <input id="phone" placeholder="Phone" required class="w-full border rounded px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-700">Status</label>
+        <select id="status" class="w-full border rounded px-3 py-2">
+          <option>New</option>
+          <option>In Progress</option>
+          <option>Converted</option>
+        </select>
+      </div>
+      <button type="submit" class="w-full bg-blue-600 text-white rounded px-3 py-2">Add</button>
+    </form>
+    <div id="msg" class="text-red-600 mt-2"></div>
+  </div>
+  <script src="/static/leads.js"></script>
+</body>
+</html>

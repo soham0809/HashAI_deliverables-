@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="max-w-md mx-auto mt-16 bg-white p-6 rounded shadow">
+    <h1>Login</h1>
+    <form id="f" class="space-y-3">
+      <input id="email" type="email" placeholder="Email" required class="w-full border rounded px-3 py-2">
+      <input id="password" type="password" placeholder="Password" required class="w-full border rounded px-3 py-2">
+      <button type="submit" class="w-full bg-blue-600 text-white rounded px-3 py-2">Login</button>
+    </form>
+    <div id="msg" class="text-red-600 mt-2"></div>
+  </div>
+  <script src="/static/login.js"></script>
+</body>
+</html>

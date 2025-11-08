@@ -1,0 +1,15 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Environments
+.venv/
+
+# Local DB and artifacts
+app.db
+*.sqlite
+*.sqlite3
+
+# Archives/logs
+*.zip
+*.log
