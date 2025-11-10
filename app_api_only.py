@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify, send_from_directory, redirect
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
@@ -6,19 +7,18 @@ import os
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
 
-app = Flask(__name__, static_folder='frontend', static_url_path='/static')
+app = Flask(__name__)
+CORS(app, origins=["https://your-frontend-domain.com"])  # Update with actual frontend URL
+
 SECRET = os.environ.get('SECRET', 'dev-secret')
 MONGODB_URI = os.environ.get('MONGODB_URI')
 MONGODB_DB = os.environ.get('MONGODB_DB', 'hashai')
 
 if not MONGODB_URI:
-    # Allow local dev without Mongo if desired, but fail clearly in prod
-    # You can set MONGODB_URI to your Atlas connection string
     raise RuntimeError('MONGODB_URI is not set')
 
 _client = MongoClient(MONGODB_URI)
 _db = _client[MONGODB_DB]
-
 
 def to_lead(doc):
     return {
@@ -29,15 +29,11 @@ def to_lead(doc):
         'status': doc.get('status', 'New')
     }
 
-
 def init_db():
-    # Ensure indexes
     _db.users.create_index([('email', ASCENDING)], unique=True)
     _db.leads.create_index([('_id', ASCENDING)])
-    # Seed a default user if none
     if _db.users.count_documents({}) == 0:
         _db.users.insert_one({'email': 'test@example.com', 'password': 'password123'})
-    # Seed sample leads if none
     if _db.leads.count_documents({}) == 0:
         _db.leads.insert_many([
             {'name': 'Alice', 'email': 'alice@example.com', 'phone': '1234567890', 'status': 'New'},
@@ -63,18 +59,6 @@ def require_auth(f):
             return jsonify({'error': 'Unauthorized'}), 401
         return f(*args, **kwargs)
     return wrapper
-
-@app.route('/')
-def index():
-    return redirect('/login')
-
-@app.route('/login')
-def login_page():
-    return send_from_directory('frontend', 'login.html')
-
-@app.route('/leads')
-def leads_page():
-    return send_from_directory('frontend', 'leads.html')
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
