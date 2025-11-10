@@ -9,8 +9,13 @@ import traceback
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='/static')
 SECRET = os.environ.get('SECRET', 'dev-secret')
-MONGODB_URI = os.environ.get('MONGODB_URI')
+MONGODB_URI = os.environ.get('MONGODB_URI') or 'mongodb+srv://sohamj69:vMNWGrWkEOsPpfQ8@cluster0.vgz8jil.mongodb.net'
 MONGODB_DB = os.environ.get('MONGODB_DB', 'hashai')
+
+# Debug: Print environment variables (remove in production)
+print(f"MONGODB_URI: {MONGODB_URI[:50]}..." if MONGODB_URI else "MONGODB_URI: None")
+print(f"MONGODB_DB: {MONGODB_DB}")
+print(f"SECRET: {'Set' if SECRET else 'Not set'}")
 
 # Global variables for database connection
 _client = None
