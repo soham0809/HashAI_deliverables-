@@ -3,85 +3,89 @@ import jwt
 from datetime import datetime, timedelta
 from functools import wraps
 import os
-from pymongo import MongoClient, ASCENDING, DESCENDING
-from bson.objectid import ObjectId
+import sqlite3
 import traceback
+import uuid
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='/static')
 SECRET = os.environ.get('SECRET', 'dev-secret')
-MONGODB_URI = os.environ.get('MONGODB_URI') or 'mongodb+srv://sohamj69:vMNWGrWkEOsPpfQ8@cluster0.vgz8jil.mongodb.net'
-MONGODB_DB = os.environ.get('MONGODB_DB', 'hashai')
 
-# Debug: Print environment variables (remove in production)
-print(f"MONGODB_URI: {MONGODB_URI[:50]}..." if MONGODB_URI else "MONGODB_URI: None")
-print(f"MONGODB_DB: {MONGODB_DB}")
-print(f"SECRET: {'Set' if SECRET else 'Not set'}")
-
-# Global variables for database connection
-_client = None
-_db = None
+# SQLite database path (works perfectly on Vercel)
+DB_PATH = '/tmp/app.db'
 
 def get_db():
-    global _client, _db
-    if _client is None:
-        if not MONGODB_URI:
-            raise RuntimeError('MONGODB_URI is not set')
-        try:
-            _client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-            _db = _client[MONGODB_DB]
-            # Test connection
-            _client.admin.command('ping')
-        except Exception as e:
-            print(f"MongoDB connection error: {e}")
-            raise
-    return _db
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # This enables column access by name
+    return conn
 
-def to_lead(doc):
+def to_lead(row):
     return {
-        'id': str(doc.get('_id')),
-        'name': doc.get('name', ''),
-        'email': doc.get('email', ''),
-        'phone': doc.get('phone', ''),
-        'status': doc.get('status', 'New')
+        'id': str(row['id']),
+        'name': row['name'],
+        'email': row['email'],
+        'phone': row['phone'],
+        'status': row['status']
     }
 
 def init_db():
     try:
-        db = get_db()
-        print("Initializing database...")
+        conn = get_db()
+        cursor = conn.cursor()
+        print("Initializing SQLite database...")
         
-        # Create indexes (ignore if already exists)
-        try:
-            db.users.create_index([('email', ASCENDING)], unique=True)
-            print("Created users email index")
-        except Exception as e:
-            print(f"Users index already exists or error: {e}")
+        # Create tables
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL
+            )
+        ''')
         
-        # Ensure test user exists
-        test_user = db.users.find_one({'email': 'test@example.com'})
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                status TEXT DEFAULT 'New'
+            )
+        ''')
+        
+        # Check if test user exists
+        cursor.execute('SELECT * FROM users WHERE email = ?', ('test@example.com',))
+        test_user = cursor.fetchone()
+        
         if not test_user:
-            result = db.users.insert_one({'email': 'test@example.com', 'password': 'password123'})
-            print(f"Created test user with ID: {result.inserted_id}")
+            cursor.execute('INSERT INTO users (email, password) VALUES (?, ?)', 
+                         ('test@example.com', 'password123'))
+            print("Created test user")
         else:
             print("Test user already exists")
             
         # Add sample leads if none exist
-        if db.leads.count_documents({}) == 0:
-            result = db.leads.insert_many([
-                {'name': 'Alice', 'email': 'alice@example.com', 'phone': '1234567890', 'status': 'New'},
-                {'name': 'Bob', 'email': 'bob@example.com', 'phone': '9876543210', 'status': 'In Progress'},
-            ])
-            print(f"Created {len(result.inserted_ids)} sample leads")
+        cursor.execute('SELECT COUNT(*) FROM leads')
+        lead_count = cursor.fetchone()[0]
+        
+        if lead_count == 0:
+            sample_leads = [
+                ('Alice', 'alice@example.com', '1234567890', 'New'),
+                ('Bob', 'bob@example.com', '9876543210', 'In Progress'),
+            ]
+            cursor.executemany('INSERT INTO leads (name, email, phone, status) VALUES (?, ?, ?, ?)', 
+                             sample_leads)
+            print(f"Created {len(sample_leads)} sample leads")
         else:
             print("Sample leads already exist")
             
+        conn.commit()
+        conn.close()
         print("Database initialization completed successfully")
         
     except Exception as e:
         print(f"Database initialization error: {e}")
         import traceback
         traceback.print_exc()
-        # Don't fail completely, just log the error
 
 # Initialize database lazily, not on import
 # init_db()
@@ -112,16 +116,21 @@ def index():
 def health():
     try:
         # Test database connection
-        db = get_db()
-        db.admin.command('ping')
+        conn = get_db()
+        cursor = conn.cursor()
         
         # Check if test user exists
-        user_count = db.users.count_documents({})
-        test_user = db.users.find_one({'email': 'test@example.com'})
+        cursor.execute('SELECT COUNT(*) FROM users')
+        user_count = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT * FROM users WHERE email = ?', ('test@example.com',))
+        test_user = cursor.fetchone()
+        
+        conn.close()
         
         return jsonify({
             'status': 'healthy', 
-            'database': 'connected',
+            'database': 'SQLite connected',
             'user_count': user_count,
             'test_user_exists': test_user is not None
         })
@@ -132,9 +141,17 @@ def health():
 def manual_init_db():
     try:
         init_db()
-        db = get_db()
-        user_count = db.users.count_documents({})
-        leads_count = db.leads.count_documents({})
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT COUNT(*) FROM users')
+        user_count = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(*) FROM leads')
+        leads_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
         return jsonify({
             'status': 'initialized',
             'users_created': user_count,
@@ -155,12 +172,18 @@ def leads_page():
 def login():
     try:
         init_db()  # Initialize database on first API call
-        db = get_db()
+        conn = get_db()
+        cursor = conn.cursor()
+        
         data = request.get_json(silent=True) or {}
         email = (data.get('email') or '').strip().lower()
         password = data.get('password') or ''
-        user = db.users.find_one({'email': email})
-        if user and user.get('password') == password:
+        
+        cursor.execute('SELECT * FROM users WHERE email = ? AND password = ?', (email, password))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
             return jsonify({'token': token_for(email)})
         return jsonify({'error': 'Invalid credentials'}), 401
     except Exception as e:
@@ -171,7 +194,9 @@ def login():
 @require_auth
 def get_leads():
     try:
-        db = get_db()
+        conn = get_db()
+        cursor = conn.cursor()
+        
         try:
             page = int(request.args.get('page', 1))
             limit = int(request.args.get('limit', 5))
@@ -181,10 +206,19 @@ def get_leads():
             page = 1
         if limit < 1:
             limit = 5
-        skip = (page - 1) * limit
-        total = db.leads.count_documents({})
-        cursor = db.leads.find({}, sort=[('_id', DESCENDING)]).skip(skip).limit(limit)
-        items = [to_lead(d) for d in cursor]
+        offset = (page - 1) * limit
+        
+        # Get total count
+        cursor.execute('SELECT COUNT(*) FROM leads')
+        total = cursor.fetchone()[0]
+        
+        # Get paginated leads
+        cursor.execute('SELECT * FROM leads ORDER BY id DESC LIMIT ? OFFSET ?', (limit, offset))
+        rows = cursor.fetchall()
+        items = [to_lead(row) for row in rows]
+        
+        conn.close()
+        
         pages = (total + limit - 1) // limit if limit else 1
         return jsonify({'leads': items, 'page': page, 'limit': limit, 'total': total, 'pages': pages})
     except Exception as e:
@@ -195,17 +229,29 @@ def get_leads():
 @require_auth
 def add_lead():
     try:
-        db = get_db()
+        conn = get_db()
+        cursor = conn.cursor()
+        
         data = request.get_json(silent=True) or {}
         name = (data.get('name') or '').strip()
         email = (data.get('email') or '').strip()
         phone = (data.get('phone') or '').strip()
         status = data.get('status') or 'New'
+        
         if not name or not email or not phone or status not in ['New', 'In Progress', 'Converted']:
             return jsonify({'error': 'Bad request'}), 400
-        res = db.leads.insert_one({'name': name, 'email': email, 'phone': phone, 'status': status})
-        doc = db.leads.find_one({'_id': res.inserted_id})
-        return jsonify(to_lead(doc)), 201
+            
+        cursor.execute('INSERT INTO leads (name, email, phone, status) VALUES (?, ?, ?, ?)',
+                      (name, email, phone, status))
+        lead_id = cursor.lastrowid
+        
+        cursor.execute('SELECT * FROM leads WHERE id = ?', (lead_id,))
+        row = cursor.fetchone()
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify(to_lead(row)), 201
     except Exception as e:
         print(f'Add lead error: {e}')
         return jsonify({'error': 'Internal server error'}), 500
@@ -214,23 +260,40 @@ def add_lead():
 @require_auth
 def update_lead(lead_id):
     try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
         data = request.get_json(silent=True) or {}
         try:
-            oid = ObjectId(lead_id)
-        except Exception:
-            return jsonify({'error': 'Not found'}), 404
-        db = get_db()
-        existing = db.leads.find_one({'_id': oid})
+            lead_id = int(lead_id)
+        except ValueError:
+            return jsonify({'error': 'Invalid lead ID'}), 400
+            
+        # Check if lead exists
+        cursor.execute('SELECT * FROM leads WHERE id = ?', (lead_id,))
+        existing = cursor.fetchone()
         if not existing:
+            conn.close()
             return jsonify({'error': 'Not found'}), 404
-        name = (data.get('name') or '').strip() or existing.get('name', '')
-        email = (data.get('email') or '').strip() or existing.get('email', '')
-        phone = (data.get('phone') or '').strip() or existing.get('phone', '')
-        status = data.get('status') or existing.get('status', 'New')
+            
+        name = (data.get('name') or '').strip() or existing['name']
+        email = (data.get('email') or '').strip() or existing['email']
+        phone = (data.get('phone') or '').strip() or existing['phone']
+        status = data.get('status') or existing['status']
+        
         if status not in ['New', 'In Progress', 'Converted']:
+            conn.close()
             return jsonify({'error': 'Bad request'}), 400
-        db.leads.update_one({'_id': oid}, {'$set': {'name': name, 'email': email, 'phone': phone, 'status': status}})
-        updated = db.leads.find_one({'_id': oid})
+            
+        cursor.execute('UPDATE leads SET name = ?, email = ?, phone = ?, status = ? WHERE id = ?',
+                      (name, email, phone, status, lead_id))
+        
+        cursor.execute('SELECT * FROM leads WHERE id = ?', (lead_id,))
+        updated = cursor.fetchone()
+        
+        conn.commit()
+        conn.close()
+        
         return jsonify(to_lead(updated))
     except Exception as e:
         print(f'Update lead error: {e}')
@@ -240,14 +303,24 @@ def update_lead(lead_id):
 @require_auth
 def delete_lead(lead_id):
     try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
         try:
-            oid = ObjectId(lead_id)
-        except Exception:
+            lead_id = int(lead_id)
+        except ValueError:
+            conn.close()
+            return jsonify({'error': 'Invalid lead ID'}), 400
+            
+        cursor.execute('DELETE FROM leads WHERE id = ?', (lead_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
             return jsonify({'error': 'Not found'}), 404
-        db = get_db()
-        res = db.leads.delete_one({'_id': oid})
-        if res.deleted_count == 0:
-            return jsonify({'error': 'Not found'}), 404
+            
+        conn.commit()
+        conn.close()
+        
         return '', 204
     except Exception as e:
         print(f'Delete lead error: {e}')
