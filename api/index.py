@@ -145,6 +145,6 @@ def delete_lead(lead_id):
         return jsonify({'error': 'Not found'}), 404
     return '', 204
 
-# Vercel expects the app to be available as 'app'
-if __name__ == '__main__':
-    app.run()
+# Export the Flask app for Vercel
+# Vercel will automatically use the 'app' variable
+app.debug = False
