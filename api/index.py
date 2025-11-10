@@ -43,17 +43,39 @@ def to_lead(doc):
 def init_db():
     try:
         db = get_db()
-        db.users.create_index([('email', ASCENDING)], unique=True)
-        # Don't create _id index as it already exists by default
-        if db.users.count_documents({}) == 0:
-            db.users.insert_one({'email': 'test@example.com', 'password': 'password123'})
+        print("Initializing database...")
+        
+        # Create indexes (ignore if already exists)
+        try:
+            db.users.create_index([('email', ASCENDING)], unique=True)
+            print("Created users email index")
+        except Exception as e:
+            print(f"Users index already exists or error: {e}")
+        
+        # Ensure test user exists
+        test_user = db.users.find_one({'email': 'test@example.com'})
+        if not test_user:
+            result = db.users.insert_one({'email': 'test@example.com', 'password': 'password123'})
+            print(f"Created test user with ID: {result.inserted_id}")
+        else:
+            print("Test user already exists")
+            
+        # Add sample leads if none exist
         if db.leads.count_documents({}) == 0:
-            db.leads.insert_many([
+            result = db.leads.insert_many([
                 {'name': 'Alice', 'email': 'alice@example.com', 'phone': '1234567890', 'status': 'New'},
                 {'name': 'Bob', 'email': 'bob@example.com', 'phone': '9876543210', 'status': 'In Progress'},
             ])
+            print(f"Created {len(result.inserted_ids)} sample leads")
+        else:
+            print("Sample leads already exist")
+            
+        print("Database initialization completed successfully")
+        
     except Exception as e:
         print(f"Database initialization error: {e}")
+        import traceback
+        traceback.print_exc()
         # Don't fail completely, just log the error
 
 # Initialize database lazily, not on import
@@ -87,9 +109,34 @@ def health():
         # Test database connection
         db = get_db()
         db.admin.command('ping')
-        return jsonify({'status': 'healthy', 'database': 'connected'})
+        
+        # Check if test user exists
+        user_count = db.users.count_documents({})
+        test_user = db.users.find_one({'email': 'test@example.com'})
+        
+        return jsonify({
+            'status': 'healthy', 
+            'database': 'connected',
+            'user_count': user_count,
+            'test_user_exists': test_user is not None
+        })
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+
+@app.route('/init-db')
+def manual_init_db():
+    try:
+        init_db()
+        db = get_db()
+        user_count = db.users.count_documents({})
+        leads_count = db.leads.count_documents({})
+        return jsonify({
+            'status': 'initialized',
+            'users_created': user_count,
+            'leads_created': leads_count
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/login')
 def login_page():
